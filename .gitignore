@@ -121,3 +121,6 @@ mmtrack/.mim
 *.pth
 *.py~
 *.sh~
+
+# output dir    # [hgx0711]
+outputs/

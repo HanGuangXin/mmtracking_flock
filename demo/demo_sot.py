@@ -10,6 +10,36 @@ import mmcv
 from mmtrack.apis import inference_sot, init_model
 
 
+# python ./demo/demo_sot.py \
+#     ./configs/sot/siamese_rpn/siamese_rpn_r50_20e_uav123.py \
+#     --input /media/ubuntu/b8a63a15-1ff0-450a-8309-529409c0c254/hgx/sense/video/video10.mp4 \
+#     --checkpoint checkpoints/siamese_rpn_r50_20e_uav123_20220420_181845-dc2d4831.pth \
+#     --output outputs/video1_siamrpn_uav \
+#     --show
+# python ./demo/demo_sot.py \
+#     ./configs/sot/siamese_rpn/siamese_rpn_r50_20e_lasot.py \
+#     --input /media/ubuntu/b8a63a15-1ff0-450a-8309-529409c0c254/hgx/sense/video/video2.mp4 \
+#     --checkpoint checkpoints/siamese_rpn_r50_20e_lasot_20220420_181845-dd0f151e.pth \
+#     --output outputs/video2_siamrpn_lasot \
+#     --show
+# python ./demo/demo_sot.py \
+#     ./configs/sot/stark/stark_st2_r50_50e_lasot.py \
+#     --input /media/ubuntu/b8a63a15-1ff0-450a-8309-529409c0c254/hgx/sense/video/video1.mp4 \
+#     --checkpoint checkpoints/stark_st2_r50_50e_lasot_20220416_170201-b1484149.pth \
+#     --output outputs/video1_starkst2_lasot \
+#     --show
+
+# init box for each video:
+# [70, 382, 827, 899]
+# [1530, 110, 1570, 155]
+# [1340, 869, 1590, 973]
+# [1334, 98, 1395, 151]
+# [1109, 564, 1738, 951]
+# [983, 326, 1061, 391]
+# [1019, 303, 1088, 360]
+# [1215, 147, 1277, 190]
+# [224, 541, 270, 579]
+# [180, 518, 217, 553]
 def main():
     parser = ArgumentParser()
     parser.add_argument('config', help='Config file')
@@ -83,6 +113,9 @@ def main():
             init_bbox[2] += init_bbox[0]
             init_bbox[3] += init_bbox[1]
 
+        # [hgx0706] get handcraft box in 1st frame
+        print("init_bbox:", init_bbox)
+        exit()
         result = inference_sot(model, img, init_bbox, frame_id=i)
         if args.output is not None:
             if IN_VIDEO or OUT_VIDEO:
