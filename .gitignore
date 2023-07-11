@@ -124,3 +124,4 @@ mmtrack/.mim
 
 # output dir    # [hgx0711]
 outputs/
+*.mp4

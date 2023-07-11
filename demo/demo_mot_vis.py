@@ -8,7 +8,26 @@ import mmcv
 
 from mmtrack.apis import inference_mot, init_model
 
+# # mot pedestrain demo
+# python demo/demo_mot_vis.py \
+#     configs/mot/bytetrack/bytetrack_yolox_x_crowdhuman_mot17-private.py \
+#     --checkpoint checkpoints/bytetrack_yolox_x_crowdhuman_mot17-private-half_20211218_205500-1985c9f0.pth \
+#     --input demo/demo.mp4 \
+#     --output mot.mp4 \
 
+# # pedestrain demo
+# python demo/demo_mot_vis.py \
+#     configs/mot/bytetrack/bytetrack_yolox_x_crowdhuman_mot17-private.py \
+#     --checkpoint checkpoints/bytetrack_yolox_x_crowdhuman_mot17-private-half_20211218_205500-1985c9f0.pth \
+#     --input demo/demo.mp4 \
+#     --output mot.mp4 \
+
+# # coco 80 classes demo
+# python demo/demo_mot_vis.py \
+#     configs/mot/bytetrack/bytetrack_yolox_x_coco.py \
+#     --checkpoint checkpoints/yolox_x_8x8_300e_coco_20211126_140254-1ef88d67.pth \
+#     --input /media/ubuntu/b8a63a15-1ff0-450a-8309-529409c0c254/hgx/sense/video/video10.mp4 \
+#     --output outputs/video10/bytetrack \
 def main():
     parser = ArgumentParser()
     parser.add_argument('config', help='config file')
