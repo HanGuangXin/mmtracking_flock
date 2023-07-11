@@ -447,7 +447,7 @@ class SiameseRPNHead(BaseModule):
                 score_maps_size, cls_score.device)[0]
 
         H, W = score_maps_size[0]
-        cls_score = cls_score.view(2, -1, H, W)
+        cls_score = cls_score.view(2, -1, H, W)     # [hgx0711] 2 for fore/back
         cls_score = cls_score.permute(2, 3, 1, 0).contiguous().view(-1, 2)
         cls_score = cls_score.softmax(dim=1)[:, 1]
 

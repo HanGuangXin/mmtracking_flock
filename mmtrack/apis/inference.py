@@ -13,6 +13,7 @@ from mmdet.datasets.pipelines import Compose
 
 from mmtrack.models import build_model
 
+from mmtrack.core import outs2results, results2outs     # [hgx0711]
 
 def init_model(config,
                checkpoint=None,
@@ -122,6 +123,112 @@ def inference_mot(model, img, frame_id):
         result = model(return_loss=False, rescale=True, **data)
     return result
 
+# [hgx0711]
+def inference_mot_det(model, img, frame_id):
+    """Detection inference image(s) with the mot model.
+
+    Args:
+        model (nn.Module): The loaded mot model.
+        img (str | ndarray): Either image name or loaded image.
+        frame_id (int): frame id.
+
+    Returns:
+        dict[str : ndarray]: The tracking results.
+    """
+    cfg = model.cfg
+    device = next(model.parameters()).device  # model device
+    # prepare data
+    if isinstance(img, np.ndarray):
+        # directly add img
+        data = dict(img=img, img_info=dict(frame_id=frame_id), img_prefix=None)
+        cfg = cfg.copy()
+        # set loading pipeline type
+        cfg.data.test.pipeline[0].type = 'LoadImageFromWebcam'
+    else:
+        # add information into dict
+        data = dict(
+            img_info=dict(filename=img, frame_id=frame_id), img_prefix=None)
+    # build the data pipeline
+    test_pipeline = Compose(cfg.data.test.pipeline)
+    data = test_pipeline(data)
+    data = collate([data], samples_per_gpu=1)
+    if next(model.parameters()).is_cuda:
+        # scatter to specified GPU
+        data = scatter(data, [device])[0]
+    else:
+        for m in model.modules():
+            assert not isinstance(
+                m, RoIPool
+            ), 'CPU inference with RoIPool is not supported currently.'
+        # just get the actual data from DataContainer
+        data['img_metas'] = data['img_metas'][0].data
+    # forward the model
+    with torch.no_grad():
+        # result = model(return_loss=False, rescale=True, **data)
+        det_results = model.detector.simple_test(
+            data['img'][0], data['img_metas'][0], rescale=True)
+        assert len(det_results) == 1, 'Batch inference is not supported.'
+        bbox_results = det_results[0]
+        # num_classes = len(bbox_results)
+
+        outs_det = results2outs(bbox_results=bbox_results)
+        det_bboxes = torch.from_numpy(outs_det['bboxes']).to(data['img'][0])
+        det_labels = torch.from_numpy(outs_det['labels']).to(data['img'][0]).long()
+
+    return det_bboxes, det_labels       # direct input to model.tracker.track
+
+def inference_mot_track(model, img, frame_id, det_bboxes, det_labels):
+    """Track inference image(s) with the mot model.
+
+    Args:
+        model (nn.Module): The loaded mot model.
+        img (str | ndarray): Either image name or loaded image.
+        frame_id (int): frame id.
+        det_bboxes: [N, 5] in format xyxy
+        det_labels: [N]
+
+    Returns:
+        dict[str : ndarray]: The tracking results.
+    """
+    cfg = model.cfg
+    device = next(model.parameters()).device  # model device
+    # prepare data
+    if isinstance(img, np.ndarray):
+        # directly add img
+        data = dict(img=img, img_info=dict(frame_id=frame_id), img_prefix=None)
+        cfg = cfg.copy()
+        # set loading pipeline type
+        cfg.data.test.pipeline[0].type = 'LoadImageFromWebcam'
+    else:
+        # add information into dict
+        data = dict(
+            img_info=dict(filename=img, frame_id=frame_id), img_prefix=None)
+    # build the data pipeline
+    test_pipeline = Compose(cfg.data.test.pipeline)
+    data = test_pipeline(data)
+    data = collate([data], samples_per_gpu=1)
+    if next(model.parameters()).is_cuda:
+        # scatter to specified GPU
+        data = scatter(data, [device])[0]
+    else:
+        for m in model.modules():
+            assert not isinstance(
+                m, RoIPool
+            ), 'CPU inference with RoIPool is not supported currently.'
+        # just get the actual data from DataContainer
+        data['img_metas'] = data['img_metas'][0].data
+    # forward the model
+    with torch.no_grad():
+        # result = model(return_loss=False, rescale=True, **data)
+        track_bboxes, track_labels, track_ids = model.tracker.track(
+            img=data['img'][0],
+            img_metas=data['img_metas'][0],
+            model=model,
+            bboxes=det_bboxes,  # [N, 5] of format xyxy
+            labels=det_labels,  # [N]
+            frame_id=frame_id,
+            rescale=True,)
+    return track_bboxes, track_labels, track_ids
 
 def inference_sot(model, image, init_bbox, frame_id):
     """Inference image with the single object tracker.
@@ -143,7 +250,7 @@ def inference_sot(model, image, init_bbox, frame_id):
         gt_bboxes=np.array(init_bbox).astype(np.float32),
         img_info=dict(frame_id=frame_id))
     # remove the "LoadImageFromFile" and "LoadAnnotations" in pipeline
-    test_pipeline = Compose(cfg.data.test.pipeline[2:])
+    test_pipeline = Compose(cfg.data.test.pipeline[2:])     # [hgx0711] MultiScaleFlipAug
     data = test_pipeline(data)
     data = collate([data], samples_per_gpu=1)
     if next(model.parameters()).is_cuda:

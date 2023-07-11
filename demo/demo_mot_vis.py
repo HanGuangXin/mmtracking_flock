@@ -7,6 +7,8 @@ from argparse import ArgumentParser
 import mmcv
 
 from mmtrack.apis import inference_mot, init_model
+from mmtrack.apis import inference_mot_det, inference_mot_track     # [hgx0711]
+from mmtrack.core import outs2results, results2outs     # [hgx0711]
 
 # # mot pedestrain demo
 # python demo/demo_mot_vis.py \
@@ -27,7 +29,7 @@ from mmtrack.apis import inference_mot, init_model
 #     configs/mot/bytetrack/bytetrack_yolox_x_coco.py \
 #     --checkpoint checkpoints/yolox_x_8x8_300e_coco_20211126_140254-1ef88d67.pth \
 #     --input /media/ubuntu/b8a63a15-1ff0-450a-8309-529409c0c254/hgx/sense/video/video10.mp4 \
-#     --output outputs/video10/bytetrack \
+#     --output outputs/video10/bytetrack_ \
 def main():
     parser = ArgumentParser()
     parser.add_argument('config', help='config file')
@@ -95,6 +97,18 @@ def main():
         if isinstance(img, str):
             img = osp.join(args.input, img)
         result = inference_mot(model, img, frame_id=i)
+        # det_bboxes, det_labels = inference_mot_det(model, img, frame_id=i)
+        # track_bboxes, track_labels, track_ids = inference_mot_track(model, img, i, det_bboxes, det_labels)
+        # track_results = outs2results(
+        #     bboxes=track_bboxes,
+        #     labels=track_labels,
+        #     ids=track_ids,
+        #     num_classes=model.detector.bbox_head.num_classes)
+        # det_results = outs2results(
+        #     bboxes=det_bboxes, labels=det_labels, num_classes=model.detector.bbox_head.num_classes)
+        # result = dict(
+        #     det_bboxes=det_results['bbox_results'],
+        #     track_bboxes=track_results['bbox_results'])
         if args.output is not None:
             if IN_VIDEO or OUT_VIDEO:
                 out_file = osp.join(out_path, f'{i:06d}.jpg')

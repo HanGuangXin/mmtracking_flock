@@ -76,8 +76,8 @@ class ByteTrack(BaseMultiObjectTracker):
             img=img,
             img_metas=img_metas,
             model=self,
-            bboxes=det_bboxes,
-            labels=det_labels,
+            bboxes=det_bboxes,  # [N, 5] of format xyxy
+            labels=det_labels,  # [N]
             frame_id=frame_id,
             rescale=rescale,
             **kwargs)

@@ -29,7 +29,7 @@ from mmtrack.apis import inference_sot, init_model
 #     --output outputs/video1_starkst2_lasot \
 #     --show
 
-# init box for each video:
+# init box for each video1~video10:
 # [70, 382, 827, 899]
 # [1530, 110, 1570, 155]
 # [1340, 869, 1590, 973]
@@ -113,9 +113,9 @@ def main():
             init_bbox[2] += init_bbox[0]
             init_bbox[3] += init_bbox[1]
 
-        # [hgx0706] get handcraft box in 1st frame
-        print("init_bbox:", init_bbox)
-        exit()
+        # # [hgx0706] get handcraft box in 1st frame
+        # print("init_bbox:", init_bbox)
+        # exit()
         result = inference_sot(model, img, init_bbox, frame_id=i)
         if args.output is not None:
             if IN_VIDEO or OUT_VIDEO:
