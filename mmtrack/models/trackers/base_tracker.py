@@ -90,7 +90,8 @@ class BaseTracker(BaseModule, metaclass=ABCMeta):
             else:
                 self.init_track(id, obj)
 
-        self.pop_invalid_tracks(frame_id)
+        invalid_ids = self.pop_invalid_tracks(frame_id)     # [hgx0712] add return invalid_ids
+        return invalid_ids  # [hgx0712] delete sot trackers w.r.t mot invalid_ids
 
     def pop_invalid_tracks(self, frame_id):
         """Pop out invalid tracks."""

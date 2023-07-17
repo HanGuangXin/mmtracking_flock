@@ -114,7 +114,7 @@ def main():
             init_bbox[3] += init_bbox[1]
 
         # # [hgx0706] get handcraft box in 1st frame
-        # print("init_bbox:", init_bbox)
+        print("frame_idx", i, "init_bbox:", init_bbox)      # list of 4 ints in format of xyxy
         # exit()
         result = inference_sot(model, img, init_bbox, frame_id=i)
         if args.output is not None:

@@ -220,7 +220,7 @@ def inference_mot_track(model, img, frame_id, det_bboxes, det_labels):
     # forward the model
     with torch.no_grad():
         # result = model(return_loss=False, rescale=True, **data)
-        track_bboxes, track_labels, track_ids = model.tracker.track(
+        track_bboxes, track_labels, track_ids, invalid_ids = model.tracker.track(   # [hgx0712] add return invalid_ids
             img=data['img'][0],
             img_metas=data['img_metas'][0],
             model=model,
@@ -228,7 +228,7 @@ def inference_mot_track(model, img, frame_id, det_bboxes, det_labels):
             labels=det_labels,  # [N]
             frame_id=frame_id,
             rescale=True,)
-    return track_bboxes, track_labels, track_ids
+    return track_bboxes, track_labels, track_ids, invalid_ids    # [hgx0712] delete sot trackers w.r.t mot invalid_ids
 
 def inference_sot(model, image, init_bbox, frame_id):
     """Inference image with the single object tracker.

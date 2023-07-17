@@ -12,7 +12,7 @@ model = dict(
         input_size=img_scale,
         random_size_range=(18, 32),
         bbox_head=dict(num_classes=80),     # [hgx0711] coco 80 classes
-        test_cfg=dict(score_thr=0.01, nms=dict(type='nms', iou_threshold=0.7)),
+        test_cfg=dict(score_thr=0.01, nms=dict(type='nms', iou_threshold=0.5)),     # [hgx0713] lower iou_threshold for vehicle
         init_cfg=dict(
             type='Pretrained',
             checkpoint=  # noqa: E251
@@ -24,8 +24,10 @@ model = dict(
         obj_score_thrs=dict(high=0.6, low=0.1),
         init_track_thr=0.7,
         weight_iou_with_det_scores=True,
-        match_iou_thrs=dict(high=0.1, low=0.5, tentative=0.3),
-        num_frames_retain=30))
+        match_iou_thrs=dict(high=0.1, low=0.1, tentative=0.1),
+        num_frames_retain=10,
+        with_cate=False,  # [hgx0712] cross category association
+    ))
 
 train_pipeline = [
     dict(

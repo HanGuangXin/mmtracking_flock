@@ -96,19 +96,19 @@ def main():
     for i, img in enumerate(imgs):
         if isinstance(img, str):
             img = osp.join(args.input, img)
-        result = inference_mot(model, img, frame_id=i)
-        # det_bboxes, det_labels = inference_mot_det(model, img, frame_id=i)
-        # track_bboxes, track_labels, track_ids = inference_mot_track(model, img, i, det_bboxes, det_labels)
-        # track_results = outs2results(
-        #     bboxes=track_bboxes,
-        #     labels=track_labels,
-        #     ids=track_ids,
-        #     num_classes=model.detector.bbox_head.num_classes)
-        # det_results = outs2results(
-        #     bboxes=det_bboxes, labels=det_labels, num_classes=model.detector.bbox_head.num_classes)
-        # result = dict(
-        #     det_bboxes=det_results['bbox_results'],
-        #     track_bboxes=track_results['bbox_results'])
+        # result = inference_mot(model, img, frame_id=i)
+        det_bboxes, det_labels = inference_mot_det(model, img, frame_id=i)
+        track_bboxes, track_labels, track_ids = inference_mot_track(model, img, i, det_bboxes, det_labels)
+        track_results = outs2results(
+            bboxes=track_bboxes,
+            labels=track_labels,
+            ids=track_ids,
+            num_classes=model.detector.bbox_head.num_classes)
+        det_results = outs2results(
+            bboxes=det_bboxes, labels=det_labels, num_classes=model.detector.bbox_head.num_classes)
+        result = dict(
+            det_bboxes=det_results['bbox_results'],
+            track_bboxes=track_results['bbox_results'])
         if args.output is not None:
             if IN_VIDEO or OUT_VIDEO:
                 out_file = osp.join(out_path, f'{i:06d}.jpg')

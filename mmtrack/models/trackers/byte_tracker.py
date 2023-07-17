@@ -40,6 +40,7 @@ class ByteTracker(BaseTracker):
                  match_iou_thrs=dict(high=0.1, low=0.5, tentative=0.3),
                  num_tentatives=3,
                  init_cfg=None,
+                 with_cate=True,    # [hgx0712] cross/within category association
                  **kwargs):
         super().__init__(init_cfg=init_cfg, **kwargs)
         self.obj_score_thrs = obj_score_thrs
@@ -49,6 +50,8 @@ class ByteTracker(BaseTracker):
         self.match_iou_thrs = match_iou_thrs
 
         self.num_tentatives = num_tentatives
+
+        self.with_cate = with_cate  # [hgx0712] cross/within category association
 
     @property
     def confirmed_ids(self):
@@ -103,6 +106,7 @@ class ByteTracker(BaseTracker):
                 invalid_ids.append(k)
         for invalid_id in invalid_ids:
             self.tracks.pop(invalid_id)
+        return invalid_ids  # [hgx0712] delete sot trackers w.r.t mot invalid_ids
 
     def assign_ids(self,
                    ids,
@@ -141,11 +145,13 @@ class ByteTracker(BaseTracker):
             self.tracks[id]['labels'][-1] for id in ids
         ]).to(det_bboxes.device)
 
-        cate_match = det_labels[None, :] == track_labels[:, None]
-        # to avoid det and track of different categories are matched
-        cate_cost = (1 - cate_match.int()) * 1e6
-
-        dists = (1 - ious + cate_cost).cpu().numpy()
+        if self.with_cate:
+            cate_match = det_labels[None, :] == track_labels[:, None]
+            # to avoid det and track of different categories are matched
+            cate_cost = (1 - cate_match.int()) * 1e6
+            dists = (1 - ious + cate_cost).cpu().numpy()
+        else:
+            dists = (1 - ious).cpu().numpy()
 
         # bipartite match
         if dists.size > 0:
@@ -296,5 +302,5 @@ class ByteTracker(BaseTracker):
                 self.num_tracks + new_track_inds.sum()).to(labels)
             self.num_tracks += new_track_inds.sum()
 
-        self.update(ids=ids, bboxes=bboxes, labels=labels, frame_ids=frame_id)
-        return bboxes, labels, ids
+        invalid_ids = self.update(ids=ids, bboxes=bboxes, labels=labels, frame_ids=frame_id)    # [hgx0712] add return invalid_ids
+        return bboxes, labels, ids, invalid_ids     # [hgx0712] delete sot trackers w.r.t mot invalid_ids
