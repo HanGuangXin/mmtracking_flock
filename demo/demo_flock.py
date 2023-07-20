@@ -92,6 +92,9 @@ def main():
             OUT_VIDEO = False
             out_path = args.output
             os.makedirs(out_path, exist_ok=True)
+            # # [hgx0719] kf vis dir
+            # out_path_kf = args.output + '_kf'
+            # os.makedirs(out_path_kf, exist_ok=True)
 
     fps = args.fps
     if args.show or OUT_VIDEO:
@@ -113,19 +116,19 @@ def main():
     prog_bar = mmcv.ProgressBar(len(imgs))
     # test and show/save the images
     for i, img in enumerate(imgs):
-        if i == 134:
-            print("111")
+        # if i == 134:
+        #     print("111")
         if isinstance(img, str):
             img = osp.join(args.input, img)
         if i % args.block_length == 0:  # [hgx0711] the start frame of the block. det and association
-            # # result = inference_mot(mot_model, img, frame_id=i)
+            bbox_type = 'det'       # [hgx0718]
             # det
             det_bboxes, det_labels = inference_mot_det(mot_model, img, frame_id=i)
             # init mot tracker
-            track_bboxes, track_labels, track_ids, invalid_ids = \
-                inference_mot_track(mot_model, img, i, det_bboxes, det_labels)  # [hgx0712] add return invalid_ids
+            track_bboxes, track_labels, track_ids, invalid_ids, ious = \
+                inference_mot_track(mot_model, img, i, det_bboxes, det_labels, bbox_type=bbox_type)  # [hgx0712] add return invalid_ids
 
-            if i == 0:  # init sot trackers
+            if i == 0:  # the first frame, init sot trackers
                 n_tracklet = len(track_bboxes)
                 sot_models = []
                 sot_results = []
@@ -138,15 +141,21 @@ def main():
                     sot_result = inference_sot(sot_model, img, init_bbox, frame_id=i)
                     sot_results.append(sot_result)
                     sot_models.append(sot_model)
-            else:   # update the self.memo.bbox in sot tracker
+            else:   # the 1st frame in the following blocks
                 n_tracklet = len(track_bboxes)
                 id2idx = {int(sot_model.id): idx for idx, sot_model in enumerate(sot_models)}
                 for i_trk in range(n_tracklet):
                     track_id = int(track_ids[i_trk])
                     track_label = track_labels[i_trk]
                     track_bbox = track_bboxes[i_trk]
-                    if track_id in id2idx:  # update existing tracklet
+                    if track_id in id2idx:
+                        # update the self.memo.bbox in sot tracker with det bbox
                         sot_models[id2idx[track_id]].memo.bbox = quad2bbox(track_bbox[:-1])
+                        # # update the template of sot models (without consider ious, but consider score)
+                        # if track_bbox[-1] > 0.9:
+                        #     sot_models[id2idx[track_id]].memo.z_feat, sot_models[id2idx[track_id]].memo.avg_channel = \
+                        #         sot_models[id2idx[track_id]].init(sot_models[id2idx[track_id]].img,
+                        #                                           sot_models[id2idx[track_id]].memo.bbox)
                     else:   # init new tracklet
                         sot_model = init_model(args.sot_config, args.sot_checkpoint, device=args.device)    # init sot model for each tracklet
                         sot_model.id = track_id     # track id
@@ -178,7 +187,38 @@ def main():
             mot_result = dict(
                 det_bboxes=det_results['bbox_results'],
                 track_bboxes=track_results['bbox_results'])
+
+            # # [hgx0719] kf bbox for visualization
+            # kf_bboxes = []
+            # for track_id in track_ids:
+            #     try:
+            #         kf_bbox = bbox_cxcyah_to_xyxy(torch.from_numpy(mot_model.tracker.tracks[int(track_id)].mean[:4][None]).to(det_bboxes))
+            #     except:
+            #         print(111)
+            #     kf_bbox = torch.cat((kf_bbox, torch.tensor([1.0]).unsqueeze(0).to(det_bboxes)), dim=1)
+            #     kf_bboxes.append(kf_bbox)
+            # kf_bboxes = torch.cat(kf_bboxes, dim=0)
+            # kf_results = outs2results(
+            #     bboxes=kf_bboxes,
+            #     labels=track_labels,
+            #     ids=track_ids,
+            #     num_classes=mot_model.detector.bbox_head.num_classes)
+            # kf_result = dict(track_bboxes=kf_results['bbox_results'])
         else:       # run sot in the following frames in the block
+            bbox_type = 'sot'       # [hgx0718]
+            # # update search location with kalman filter estimation
+            # assert set(mot_model.tracker.ids) == set([sot_model.id for sot_model in sot_models]), \
+            #     "tracker of mot {} and sot {} should be the same.".format\
+            #         (set(mot_model.tracker.ids), set([sot_model.id for sot_model in sot_models]))
+            # mot_ids = mot_model.tracker.ids
+            # id2idx = {int(sot_model.id): idx for idx, sot_model in enumerate(sot_models)}
+            # for mot_id in mot_ids:
+            #     # track_id = int(track_ids[i_trk])
+            #     # track_label = track_labels[i_trk]
+            #     kf_bbox = bbox_cxcyah_to_xyxy(torch.from_numpy(mot_model.tracker.tracks[mot_id].mean[:4][None]).to(det_bboxes))
+            #     # update the self.memo.bbox in sot tracker with det bbox
+            #     sot_models[id2idx[mot_id]].memo.bbox = quad2bbox(kf_bbox)
+
             sot_results = []
             det_bboxes = []
             det_labels = []
@@ -191,13 +231,19 @@ def main():
             det_labels = torch.tensor(det_labels).to(args.device)
 
             # nms for tracklets drift of sot model before association
-            dets, keep = batched_nms(det_bboxes[:, :-1], det_bboxes[:, -1], det_labels,
+            dets, keep = batched_nms(det_bboxes[:, :-1].to(torch.float32), det_bboxes[:, -1].to(torch.float32), det_labels,
                                      mot_config.model.detector.test_cfg.nms, class_agnostic=True)
             det_bboxes = det_bboxes[keep]
             det_labels = det_labels[keep]
 
+            # # score thresh for tracklets drift of sot model (i.e. low score)
+            # keep = det_bboxes[:, -1] > 0.7
+            # det_bboxes = det_bboxes[keep]
+            # det_labels = det_labels[keep]
+
             # association
-            track_bboxes, track_labels, track_ids, invalid_ids = inference_mot_track(mot_model, img, i, det_bboxes, det_labels)
+            track_bboxes, track_labels, track_ids, invalid_ids, ious = \
+                inference_mot_track(mot_model, img, i, det_bboxes, det_labels, bbox_type=bbox_type)
 
             # delete sot trackers w.r.t mot invalid_ids
             if len(invalid_ids) != 0:
@@ -214,8 +260,6 @@ def main():
             assert set(mot_model.tracker.ids) == set([sot_model.id for sot_model in sot_models]), \
                 "tracker of mot {} and sot {} should be the same.".format\
                     (set(mot_model.tracker.ids), set([sot_model.id for sot_model in sot_models]))
-            # mot {0, 1, 2, 3, 4, 5, 6, 7, 8, 10, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22}
-            # sot {0, 1, 2, 3, 4, 5, 6, 7, 8, 10, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21}
 
             # update search location with kalman filter estimation
             mot_ids = mot_model.tracker.ids
@@ -224,6 +268,7 @@ def main():
                 # track_id = int(track_ids[i_trk])
                 # track_label = track_labels[i_trk]
                 kf_bbox = bbox_cxcyah_to_xyxy(torch.from_numpy(mot_model.tracker.tracks[mot_id].mean[:4][None]).to(det_bboxes))
+                # update the self.memo.bbox in sot tracker with det bbox
                 sot_models[id2idx[mot_id]].memo.bbox = quad2bbox(kf_bbox)
 
             # format results for visualization
@@ -237,9 +282,25 @@ def main():
             mot_result = dict(
                 det_bboxes=det_results['bbox_results'],
                 track_bboxes=track_results['bbox_results'])
+
+            # # [hgx0719] kf bbox for visualization
+            # kf_bboxes = []
+            # for track_id in mot_ids:
+            #     kf_bbox = bbox_cxcyah_to_xyxy(torch.from_numpy(mot_model.tracker.tracks[int(track_id)].mean[:4][None]).to(det_bboxes))
+            #     kf_bbox = torch.cat((kf_bbox, torch.tensor([1.0]).unsqueeze(0).to(det_bboxes)), dim=1)
+            #     kf_bboxes.append(kf_bbox)
+            # kf_bboxes = torch.cat(kf_bboxes, dim=0)
+            # kf_results = outs2results(
+            #     bboxes=kf_bboxes,
+            #     labels=track_labels,
+            #     ids=track_ids,
+            #     num_classes=mot_model.detector.bbox_head.num_classes)
+            # kf_result = dict(track_bboxes=kf_results['bbox_results'])
+
         if args.output is not None:
             if IN_VIDEO or OUT_VIDEO:
                 out_file = osp.join(out_path, f'{i:06d}.jpg')
+                # out_file_kf = osp.join(out_path_kf, f'{i:06d}.jpg')     # [hgx0719]
             else:
                 out_file = osp.join(out_path, img.rsplit(os.sep, 1)[-1])
         else:
@@ -252,6 +313,15 @@ def main():
             wait_time=int(1000. / fps) if fps else 0,
             out_file=out_file,
             backend=args.backend)
+
+        # mot_model.show_result(
+        #     img,
+        #     kf_result,
+        #     score_thr=args.score_thr,
+        #     show=args.show,
+        #     wait_time=int(1000. / fps) if fps else 0,
+        #     out_file=out_file_kf,
+        #     backend=args.backend)
         prog_bar.update()
 
     if args.output and OUT_VIDEO:

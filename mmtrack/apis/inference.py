@@ -177,7 +177,7 @@ def inference_mot_det(model, img, frame_id):
 
     return det_bboxes, det_labels       # direct input to model.tracker.track
 
-def inference_mot_track(model, img, frame_id, det_bboxes, det_labels):
+def inference_mot_track(model, img, frame_id, det_bboxes, det_labels, bbox_type='det'):
     """Track inference image(s) with the mot model.
 
     Args:
@@ -220,15 +220,18 @@ def inference_mot_track(model, img, frame_id, det_bboxes, det_labels):
     # forward the model
     with torch.no_grad():
         # result = model(return_loss=False, rescale=True, **data)
-        track_bboxes, track_labels, track_ids, invalid_ids = model.tracker.track(   # [hgx0712] add return invalid_ids
+        track_bboxes, track_labels, track_ids, invalid_ids, ious = model.tracker.track(   # [hgx0712] invalid_ids [hgx719] ious
             img=data['img'][0],
             img_metas=data['img_metas'][0],
             model=model,
             bboxes=det_bboxes,  # [N, 5] of format xyxy
             labels=det_labels,  # [N]
             frame_id=frame_id,
-            rescale=True,)
-    return track_bboxes, track_labels, track_ids, invalid_ids    # [hgx0712] delete sot trackers w.r.t mot invalid_ids
+            rescale=True,
+            bbox_type=bbox_type)     # [hgx0718] box_type in ['det', 'sot']
+    return track_bboxes, track_labels, track_ids, invalid_ids, ious
+    # [hgx0712] delete sot trackers w.r.t mot invalid_ids
+    # [hgx0719] ious
 
 def inference_sot(model, image, init_bbox, frame_id):
     """Inference image with the single object tracker.

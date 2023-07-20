@@ -78,6 +78,8 @@ class BaseTracker(BaseModule, metaclass=ABCMeta):
         if isinstance(kwargs['frame_ids'], int):
             kwargs['frame_ids'] = torch.tensor([kwargs['frame_ids']] *
                                                num_objs)
+        if isinstance(kwargs['bbox_type'], str):        # [hgx0718]
+            kwargs['bbox_type'] = [kwargs['bbox_type']] * num_objs
         # cur_frame_id = int(kwargs['frame_ids'][0])
         for k, v in kwargs.items():
             if len(v) != num_objs:

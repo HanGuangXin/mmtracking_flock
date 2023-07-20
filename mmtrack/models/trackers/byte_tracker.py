@@ -67,6 +67,9 @@ class ByteTracker(BaseTracker):
 
     def init_track(self, id, obj):
         """Initialize a track."""
+        bbox_type = obj[4]  # [hgx0718] bbox_type
+        iou = obj[5]    # [hgx0719] iou between matched box and kf box
+        obj = obj[:-2]      # [hgx0718] delete bbox_type in obj
         super().init_track(id, obj)
         if self.tracks[id].frame_ids[-1] == 0:
             self.tracks[id].tentative = False
@@ -75,11 +78,13 @@ class ByteTracker(BaseTracker):
         bbox = bbox_xyxy_to_cxcyah(self.tracks[id].bboxes[-1])  # size = (1, 4)
         assert bbox.ndim == 2 and bbox.shape[0] == 1
         bbox = bbox.squeeze(0).cpu().numpy()
-        self.tracks[id].mean, self.tracks[id].covariance = self.kf.initiate(
-            bbox)
+        self.tracks[id].mean, self.tracks[id].covariance = self.kf.initiate(bbox)
 
     def update_track(self, id, obj):
         """Update a track."""
+        bbox_type = obj[4]  # [hgx0718] bbox_type
+        iou = obj[5]    # [hgx0719] iou between matched box and kf box
+        obj = obj[:-2]      # [hgx0718] delete bbox_type in obj
         super().update_track(id, obj)
         if self.tracks[id].tentative:
             if len(self.tracks[id]['bboxes']) >= self.num_tentatives:
@@ -91,8 +96,29 @@ class ByteTracker(BaseTracker):
         label_idx = self.memo_items.index('labels')
         obj_label = obj[label_idx]
         assert obj_label == track_label
+        # kf update for all matches
         self.tracks[id].mean, self.tracks[id].covariance = self.kf.update(
             self.tracks[id].mean, self.tracks[id].covariance, bbox)
+
+        # # update kf by bbox score
+        # conf_thresh = 0.00 if bbox_type == 'det' else 0.95
+        # if obj[1][-1] > conf_thresh:
+        #     self.tracks[id].mean, self.tracks[id].covariance = self.kf.update(
+        #         self.tracks[id].mean, self.tracks[id].covariance, bbox)
+
+        # # update kf by bbox overlap (det/sot box and kf box)
+        # overlap_thresh = 0.8
+        # if iou > overlap_thresh:
+        #     self.tracks[id].mean, self.tracks[id].covariance = self.kf.update(
+        #         self.tracks[id].mean, self.tracks[id].covariance, bbox)
+
+        # # update kf by bbox overlap (det/sot box and kf box) and bbox score
+        # overlap_thresh = 0.5
+        # conf_thresh = 0.00 if bbox_type == 'det' else 0.80
+        # if iou > overlap_thresh and obj[1][-1] > conf_thresh:
+        #     self.tracks[id].mean, self.tracks[id].covariance = self.kf.update(
+        #         self.tracks[id].mean, self.tracks[id].covariance, bbox)
+
 
     def pop_invalid_tracks(self, frame_id):
         """Pop out invalid tracks."""
@@ -160,7 +186,16 @@ class ByteTracker(BaseTracker):
         else:
             row = np.zeros(len(ids)).astype(np.int32) - 1
             col = np.zeros(len(det_bboxes)).astype(np.int32) - 1
-        return row, col
+
+        # [hgx0718] additional ious for each match
+        iou_per_match = []
+        for i in range(len(col)):       # det
+            if col[i] != -1:
+                iou_per_match.append(ious[col[i], i])
+            else:
+                iou_per_match.append(0.0)
+        iou_per_match = torch.tensor(iou_per_match).to(det_bboxes.device)
+        return row, col, iou_per_match
 
     @force_fp32(apply_to=('img', 'bboxes'))
     def track(self,
@@ -171,6 +206,7 @@ class ByteTracker(BaseTracker):
               labels,
               frame_id,
               rescale=False,
+              bbox_type='det',
               **kwargs):
         """Tracking forward function.
 
@@ -201,6 +237,7 @@ class ByteTracker(BaseTracker):
             ids = torch.arange(self.num_tracks,
                                self.num_tracks + num_new_tracks).to(labels)
             self.num_tracks += num_new_tracks
+            ious = torch.ones_like(labels, dtype=bboxes.dtype)     # [hgx0719] placeholder
 
         else:
             # 0. init
@@ -232,7 +269,7 @@ class ByteTracker(BaseTracker):
                      self.tracks[id].mean, self.tracks[id].covariance)
 
             # 2. first match
-            first_match_track_inds, first_match_det_inds = self.assign_ids(
+            first_match_track_inds, first_match_det_inds, first_iou_per_match = self.assign_ids(    # [hgx0718] ious
                 self.confirmed_ids, first_det_bboxes, first_det_labels,
                 self.weight_iou_with_det_scores, self.match_iou_thrs['high'])
             # '-1' mean a detection box is not matched with tracklets in
@@ -244,17 +281,19 @@ class ByteTracker(BaseTracker):
             first_match_det_bboxes = first_det_bboxes[valid]
             first_match_det_labels = first_det_labels[valid]
             first_match_det_ids = first_det_ids[valid]
+            first_match_iou_per_match = first_iou_per_match[valid]
             assert (first_match_det_ids > -1).all()
 
             first_unmatch_det_bboxes = first_det_bboxes[~valid]
             first_unmatch_det_labels = first_det_labels[~valid]
             first_unmatch_det_ids = first_det_ids[~valid]
+            first_unmatch_iou_per_match = first_iou_per_match[~valid]
             assert (first_unmatch_det_ids == -1).all()
 
             # 3. use unmatched detection bboxes from the first match to match
             # the unconfirmed tracks
             (tentative_match_track_inds,
-             tentative_match_det_inds) = self.assign_ids(
+             tentative_match_det_inds, tentative_match_iou_per_match) = self.assign_ids(  # [hgx0718] ious
                  self.unconfirmed_ids, first_unmatch_det_bboxes,
                  first_unmatch_det_labels, self.weight_iou_with_det_scores,
                  self.match_iou_thrs['tentative'])
@@ -272,7 +311,7 @@ class ByteTracker(BaseTracker):
                 if case_1 and case_2:
                     first_unmatch_track_ids.append(id)
 
-            second_match_track_inds, second_match_det_inds = self.assign_ids(
+            second_match_track_inds, second_match_det_inds, second_match_iou_per_match = self.assign_ids( # [hgx0718] ious
                 first_unmatch_track_ids, second_det_bboxes, second_det_labels,
                 False, self.match_iou_thrs['low'])
             valid = second_match_det_inds > -1
@@ -291,9 +330,14 @@ class ByteTracker(BaseTracker):
                 (first_match_det_labels, first_unmatch_det_labels), dim=0)
             labels = torch.cat((labels, second_det_labels[valid]), dim=0)
 
-            ids = torch.cat((first_match_det_ids, first_unmatch_det_ids),
-                            dim=0)
+            ids = torch.cat((first_match_det_ids, first_unmatch_det_ids), dim=0)
             ids = torch.cat((ids, second_det_ids[valid]), dim=0)
+
+            # [hgx0719] ious type list
+            ious = torch.cat((first_match_iou_per_match,
+                              torch.zeros_like(first_unmatch_det_labels, dtype=first_iou_per_match.dtype)), dim=0)
+            ious = torch.cat((ious, second_match_iou_per_match[valid]), dim=0)
+            # print({int(id): '{:.2f}'.format(float(iou)) for id, iou in zip(ids, ious)})
 
             # 6. assign new ids
             new_track_inds = ids == -1
@@ -302,5 +346,5 @@ class ByteTracker(BaseTracker):
                 self.num_tracks + new_track_inds.sum()).to(labels)
             self.num_tracks += new_track_inds.sum()
 
-        invalid_ids = self.update(ids=ids, bboxes=bboxes, labels=labels, frame_ids=frame_id)    # [hgx0712] add return invalid_ids
-        return bboxes, labels, ids, invalid_ids     # [hgx0712] delete sot trackers w.r.t mot invalid_ids
+        invalid_ids = self.update(ids=ids, bboxes=bboxes, labels=labels, frame_ids=frame_id, bbox_type=bbox_type, ious=ious)    # [hgx0712] add return invalid_ids
+        return bboxes, labels, ids, invalid_ids, ious     # [hgx0712] delete sot trackers w.r.t mot invalid_ids

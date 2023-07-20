@@ -330,6 +330,7 @@ class SiamRPN(BaseSingleObjectTracker):
             best_score (Tensor): the tracking bbox confidence in range [0,1],
                 and the score of initial frame is -1.
         """
+        self.img = img      # [hgx0719] save tenser img
         if frame_id == 0:
             gt_bboxes = gt_bboxes[0][0]
             self.memo = Dict()
@@ -341,6 +342,8 @@ class SiamRPN(BaseSingleObjectTracker):
             best_score, self.memo.bbox = self.track(img, self.memo.bbox,
                                                     self.memo.z_feat,
                                                     self.memo.avg_channel)
+            # if best_score > 0.99:   # [hgx0718] update template, will help especially for objects occluded when first detected
+            #     self.memo.z_feat, self.memo.avg_channel = self.init(img, self.memo.bbox)
         bbox_pred = bbox_cxcywh_to_xyxy(self.memo.bbox)
 
         return bbox_pred, best_score
