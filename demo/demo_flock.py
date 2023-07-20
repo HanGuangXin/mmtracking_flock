@@ -149,7 +149,7 @@ def main():
                     track_label = track_labels[i_trk]
                     track_bbox = track_bboxes[i_trk]
                     if track_id in id2idx:
-                        # update the self.memo.bbox in sot tracker with det bbox
+                        # NOTE 4: update the self.memo.bbox in sot tracker with det bbox
                         sot_models[id2idx[track_id]].memo.bbox = quad2bbox(track_bbox[:-1])
                         # # update the template of sot models (without consider ious, but consider score)
                         # if track_bbox[-1] > 0.9:
@@ -164,7 +164,8 @@ def main():
                                      int(track_bbox[2]), int(track_bbox[3])]
                         sot_result = inference_sot(sot_model, img, init_bbox, frame_id=0)       # frame_id must be 0
                         sot_models.append(sot_model)
-            # delete sot trackers w.r.t mot invalid_ids
+
+            # NOTE 3: delete sot trackers w.r.t mot invalid_ids
             if len(invalid_ids) != 0:
                 id2idx = {int(sot_model.id): idx for idx, sot_model in enumerate(sot_models)}
                 invalid_ids.sort(reverse=True)
@@ -230,7 +231,7 @@ def main():
             det_bboxes = torch.tensor(np.array(det_bboxes)).to(args.device)
             det_labels = torch.tensor(det_labels).to(args.device)
 
-            # nms for tracklets drift of sot model before association
+            # NOTE 1: nms for tracklets drift of sot model before association
             dets, keep = batched_nms(det_bboxes[:, :-1].to(torch.float32), det_bboxes[:, -1].to(torch.float32), det_labels,
                                      mot_config.model.detector.test_cfg.nms, class_agnostic=True)
             det_bboxes = det_bboxes[keep]
@@ -245,7 +246,7 @@ def main():
             track_bboxes, track_labels, track_ids, invalid_ids, ious = \
                 inference_mot_track(mot_model, img, i, det_bboxes, det_labels, bbox_type=bbox_type)
 
-            # delete sot trackers w.r.t mot invalid_ids
+            # NOTE 3: delete sot trackers w.r.t mot invalid_ids
             if len(invalid_ids) != 0:
                 id2idx = {int(sot_model.id): idx for idx, sot_model in enumerate(sot_models)}
                 invalid_ids.sort(reverse=True)
@@ -254,7 +255,8 @@ def main():
                         sot_models.pop(id2idx[invalid_id])
                     else:
                         continue
-            # do not generate new tracklets for when using sot as det
+
+            # NOTE 2: do not generate new tracklets for when using sot as det
             for invalid_id in list(set(mot_model.tracker.ids) - set([sot_model.id for sot_model in sot_models])):
                 mot_model.tracker.tracks.pop(invalid_id)
             assert set(mot_model.tracker.ids) == set([sot_model.id for sot_model in sot_models]), \
@@ -268,7 +270,7 @@ def main():
                 # track_id = int(track_ids[i_trk])
                 # track_label = track_labels[i_trk]
                 kf_bbox = bbox_cxcyah_to_xyxy(torch.from_numpy(mot_model.tracker.tracks[mot_id].mean[:4][None]).to(det_bboxes))
-                # update the self.memo.bbox in sot tracker with det bbox
+                # NOTE 4: update the self.memo.bbox in sot tracker with det bbox
                 sot_models[id2idx[mot_id]].memo.bbox = quad2bbox(kf_bbox)
 
             # format results for visualization
