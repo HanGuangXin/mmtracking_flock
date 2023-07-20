@@ -19,13 +19,13 @@ import numpy as np
 
 # # coco 80 classes demo
 # python demo/demo_flock.py \
-#     --input /media/ubuntu/b8a63a15-1ff0-450a-8309-529409c0c254/hgx/sense/video/video10.mp4 \
-#     --output outputs/video10/flock \
-#     --mot_config configs/mot/bytetrack/bytetrack_yolox_x_coco.py \
-#     --mot_checkpoint checkpoints/yolox_x_8x8_300e_coco_20211126_140254-1ef88d67.pth \
-#     --sot_config configs/sot/siamese_rpn/siamese_rpn_r50_20e_lasot.py \
-#     --sot_checkpoint checkpoints/siamese_rpn_r50_20e_lasot_20220420_181845-dd0f151e.pth \
-#     --block_length 8 \
+# --input /media/ubuntu/b8a63a15-1ff0-450a-8309-529409c0c254/hgx/sense/video/video4.mp4 \
+# --output outputs/video4/flock_yolox_stark \
+# --mot_config configs/mot/bytetrack/bytetrack_yolox_x_coco.py \
+# --mot_checkpoint checkpoints/yolox_x_8x8_300e_coco_20211126_140254-1ef88d67.pth \
+# --sot_config configs/sot/stark/stark_st2_r50_50e_lasot.py \
+# --sot_checkpoint checkpoints/stark_st2_r50_50e_lasot_20220416_170201-b1484149.pth \
+# --block_length 8
 
 def main():
     parser = ArgumentParser()
