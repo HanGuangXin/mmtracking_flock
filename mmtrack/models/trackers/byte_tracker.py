@@ -139,7 +139,8 @@ class ByteTracker(BaseTracker):
                    det_bboxes,
                    det_labels,
                    weight_iou_with_det_scores=False,
-                   match_iou_thr=0.5):
+                   match_iou_thr=0.5,
+                   bbox_type='det'):
         """Assign ids.
 
         Args:
@@ -166,6 +167,19 @@ class ByteTracker(BaseTracker):
         if weight_iou_with_det_scores:
             ious *= det_bboxes[:, 4][None]
 
+        # compute aspect ratio
+        w1 = track_bboxes[:, 2] - track_bboxes[:, 0]
+        h1 = track_bboxes[:, 3] - track_bboxes[:, 1]
+        w2 = det_bboxes[:, 2] - det_bboxes[:, 0]
+        h2 = det_bboxes[:, 3] - det_bboxes[:, 1]
+        a1 = w1 / h1
+        a2 = w2 / h2
+        a_dists = torch.abs(a1[:, None] - a2)
+
+        s1 = w1 * h1
+        s2 = w2 * h2
+        s_dists = torch.abs(s1[:, None] - s2)
+
         # support multi-class association
         track_labels = torch.tensor([
             self.tracks[id]['labels'][-1] for id in ids
@@ -179,10 +193,24 @@ class ByteTracker(BaseTracker):
         else:
             dists = (1 - ious).cpu().numpy()
 
+        # [hgx0720] consider aspect ratio by add it to dist
+        # dists += 0.0 * a_dists.cpu().numpy()
+
         # bipartite match
         if dists.size > 0:
             cost, row, col = lap.lapjv(
                 dists, extend_cost=True, cost_limit=1 - match_iou_thr)
+            # if bbox_type == 'sot':  # [hgx0720] only reject sot bbox
+            # [hgx0720] consider aspect ratio by additional reject
+            for i in range(len(row)):       # det
+                if row[i] == -1:        # [hgx0720] tracks do not match any det bboxes
+                    continue
+                # [hgx0720] reject matches with big aspect ratio / scale difference
+                if a_dists[i, row[i]] > 0.5 or \
+                    s_dists[i, row[i]] / s1[i] > 2.5:
+                    assert col[row[i]] == i
+                    col[row[i]] = -1
+                    row[i] = -1
         else:
             row = np.zeros(len(ids)).astype(np.int32) - 1
             col = np.zeros(len(det_bboxes)).astype(np.int32) - 1
@@ -271,7 +299,7 @@ class ByteTracker(BaseTracker):
             # 2. first match
             first_match_track_inds, first_match_det_inds, first_iou_per_match = self.assign_ids(    # [hgx0718] ious
                 self.confirmed_ids, first_det_bboxes, first_det_labels,
-                self.weight_iou_with_det_scores, self.match_iou_thrs['high'])
+                self.weight_iou_with_det_scores, self.match_iou_thrs['high'], bbox_type)
             # '-1' mean a detection box is not matched with tracklets in
             # previous frame
             valid = first_match_det_inds > -1
@@ -296,7 +324,7 @@ class ByteTracker(BaseTracker):
              tentative_match_det_inds, tentative_match_iou_per_match) = self.assign_ids(  # [hgx0718] ious
                  self.unconfirmed_ids, first_unmatch_det_bboxes,
                  first_unmatch_det_labels, self.weight_iou_with_det_scores,
-                 self.match_iou_thrs['tentative'])
+                 self.match_iou_thrs['tentative'], bbox_type=bbox_type)
             valid = tentative_match_det_inds > -1
             first_unmatch_det_ids[valid] = torch.tensor(self.unconfirmed_ids)[
                 tentative_match_det_inds[valid]].to(labels)
@@ -313,7 +341,7 @@ class ByteTracker(BaseTracker):
 
             second_match_track_inds, second_match_det_inds, second_match_iou_per_match = self.assign_ids( # [hgx0718] ious
                 first_unmatch_track_ids, second_det_bboxes, second_det_labels,
-                False, self.match_iou_thrs['low'])
+                False, self.match_iou_thrs['low'], bbox_type=bbox_type)
             valid = second_match_det_inds > -1
             second_det_ids[valid] = torch.tensor(first_unmatch_track_ids)[
                 second_match_det_inds[valid]].to(ids)
