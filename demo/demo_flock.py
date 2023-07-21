@@ -257,8 +257,17 @@ def main():
                         continue
 
             # NOTE 2: do not generate new tracklets for when using sot as det
+            invalid_ids_sot = []
             for invalid_id in list(set(mot_model.tracker.ids) - set([sot_model.id for sot_model in sot_models])):
+                invalid_ids_sot.append(invalid_id)
                 mot_model.tracker.tracks.pop(invalid_id)
+            # [hgx0720] delete invalid new track in mot results
+            if len(invalid_ids_sot) > 0:
+                invalid_ids_sot = torch.tensor(invalid_ids_sot).to(track_ids)
+                track_bboxes = track_bboxes[~torch.isin(track_ids, invalid_ids_sot)]
+                track_labels = track_labels[~torch.isin(track_ids, invalid_ids_sot)]
+                ious = ious[~torch.isin(track_ids, invalid_ids_sot)]
+                track_ids = track_ids[~torch.isin(track_ids, invalid_ids_sot)]
             assert set(mot_model.tracker.ids) == set([sot_model.id for sot_model in sot_models]), \
                 "tracker of mot {} and sot {} should be the same.".format\
                     (set(mot_model.tracker.ids), set([sot_model.id for sot_model in sot_models]))
